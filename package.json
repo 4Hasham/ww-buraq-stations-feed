@@ -1,0 +1,19 @@
+{
+  "name": "ww-buraq-station-feed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Polls an FTP server for updated AWS weather station .dat files and ingests new readings into MongoDB.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "basic-ftp": "^5.0.5",
+    "dotenv": "^16.4.5",
+    "mongodb": "^6.9.0",
+    "node-cron": "^3.0.3"
+  }
+}

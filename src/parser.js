@@ -49,12 +49,6 @@ function convertValue(raw) {
   return raw;
 }
 
-function extractStationName(fileName) {
-  const match = /^AWS_([A-Za-z0-9]+)_/.exec(fileName);
-  if (match) return match[1];
-  return fileName.replace(/\.dat$/i, '');
-}
-
 // Datalogger timestamps ("2026-07-01 00:00:00") have no timezone info and are
 // recorded in the station's local time (Pakistan Standard Time, UTC+5, no DST).
 // Parsing them without an explicit offset would make the result depend on the
@@ -84,8 +78,36 @@ function buildRow(values, fieldNames) {
   return row;
 }
 
-function parseToa5(content, fileName) {
+function hasToa5Header(firstLine) {
+  return parseCsvLine(firstLine)[0] === 'TOA5';
+}
+
+function parseToa5(content, fileName, stationId) {
   const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+
+  if (lines.length === 0) {
+    throw new Error(`${fileName}: file is empty`);
+  }
+
+  if (!hasToa5Header(lines[0])) {
+    const fieldNames = config.stationFieldSchemas[stationId];
+    if (!fieldNames) {
+      throw new Error(
+        `${fileName}: file has no TOA5 header and no field schema is configured for station "${stationId}"`,
+      );
+    }
+
+    const rows = lines.map((line) => buildRow(parseCsvLine(line), fieldNames));
+
+    return {
+      stationId,
+      envInfo: null,
+      fieldNames,
+      units: null,
+      processing: null,
+      rows,
+    };
+  }
 
   if (lines.length < 5) {
     throw new Error(`${fileName}: expected at least 4 header lines + 1 data line, got ${lines.length} lines`);
@@ -100,7 +122,7 @@ function parseToa5(content, fileName) {
   const rows = dataLines.map((line) => buildRow(parseCsvLine(line), fieldNames));
 
   return {
-    stationName: extractStationName(fileName),
+    stationId,
     envInfo,
     fieldNames,
     units,

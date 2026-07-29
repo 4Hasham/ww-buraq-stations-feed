@@ -18,11 +18,11 @@ async function connect() {
 async function ensureIndexes(database) {
   await database
     .collection(config.mongo.dataCollection)
-    .createIndex({ _sourceFile: 1, RECORD: 1 }, { unique: true, name: 'uniq_sourceFile_record' });
+    .createIndex({ _station: 1, _sourceFile: 1, RECORD: 1 }, { unique: true, name: 'uniq_station_sourceFile_record' });
 
   await database
     .collection(config.mongo.stateCollection)
-    .createIndex({ fileName: 1 }, { unique: true, name: 'uniq_fileName' });
+    .createIndex({ _station: 1, fileName: 1 }, { unique: true, name: 'uniq_station_fileName' });
 }
 
 async function getDataCollection() {

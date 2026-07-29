@@ -13,34 +13,35 @@ function hasChanged(prevState, size, modifiedAt) {
   return false;
 }
 
-async function processFile(client, stateCol, dataCol, file) {
+async function processFile(client, stateCol, dataCol, station, file) {
+  const { id: stationId, remoteDir } = station;
   const fileName = file.name;
   const size = file.size;
   const modifiedAt = file.modifiedAt instanceof Date ? file.modifiedAt : null;
 
-  const prevState = await stateCol.findOne({ fileName });
+  const prevState = await stateCol.findOne({ _station: stationId, fileName });
 
   if (!hasChanged(prevState, size, modifiedAt)) {
-    logger.info(`No changes for ${fileName} (size ${size}, last seen ${prevState.lastCheckedAt.toISOString()})`);
-    await stateCol.updateOne({ fileName }, { $set: { lastCheckedAt: new Date() } });
+    logger.info(`No changes for ${stationId}/${fileName} (size ${size}, last seen ${prevState.lastCheckedAt.toISOString()})`);
+    await stateCol.updateOne({ _station: stationId, fileName }, { $set: { lastCheckedAt: new Date() } });
     return;
   }
 
-  logger.info(`Update detected for ${fileName} (previous size: ${prevState ? prevState.size : 'n/a'}, new size: ${size}) — downloading...`);
+  logger.info(`Update detected for ${stationId}/${fileName} (previous size: ${prevState ? prevState.size : 'n/a'}, new size: ${size}) — downloading...`);
 
-  const content = await downloadFileContent(client, config.ftp.remoteDir, fileName);
-  const parsed = parseToa5(content, fileName);
+  const content = await downloadFileContent(client, remoteDir, fileName);
+  const parsed = parseToa5(content, fileName, stationId);
 
   const ops = parsed.rows
     .filter((row) => row.RECORD !== null && !Number.isNaN(row.RECORD))
     .map((row) => ({
       updateOne: {
-        filter: { _sourceFile: fileName, RECORD: row.RECORD },
+        filter: { _station: stationId, _sourceFile: fileName, RECORD: row.RECORD },
         update: {
           $set: {
             ...row,
             _sourceFile: fileName,
-            _station: parsed.stationName,
+            _station: stationId,
             _ingestedAt: new Date(),
           },
         },
@@ -58,9 +59,10 @@ async function processFile(client, stateCol, dataCol, file) {
   }
 
   await stateCol.updateOne(
-    { fileName },
+    { _station: stationId, fileName },
     {
       $set: {
+        _station: stationId,
         fileName,
         size,
         modifiedAt,
@@ -72,30 +74,40 @@ async function processFile(client, stateCol, dataCol, file) {
   );
 
   logger.info(
-    `${fileName}: parsed ${parsed.rows.length} rows -> ${upsertedCount} new, ${modifiedCount} updated in MongoDB`,
+    `${stationId}/${fileName}: parsed ${parsed.rows.length} rows -> ${upsertedCount} new, ${modifiedCount} updated in MongoDB`,
   );
 }
 
-async function pollOnce() {
-  logger.info(`Polling FTP folder "${config.ftp.remoteDir}"...`);
+async function pollStation(client, stateCol, dataCol, station) {
+  logger.info(`Polling FTP folder "${station.remoteDir}" for station "${station.id}"...`);
 
+  const files = await listDatFiles(client, station.remoteDir);
+
+  if (files.length === 0) {
+    logger.info(`No .dat files found in ${station.remoteDir}`);
+    return;
+  }
+
+  for (const file of files) {
+    try {
+      await processFile(client, stateCol, dataCol, station, file);
+    } catch (err) {
+      logger.error(`Failed processing ${station.id}/${file.name}`, err);
+    }
+  }
+}
+
+async function pollOnce() {
   const client = await createClient();
   try {
-    const files = await listDatFiles(client, config.ftp.remoteDir);
-
-    if (files.length === 0) {
-      logger.info(`No .dat files found in ${config.ftp.remoteDir}`);
-      return;
-    }
-
     const stateCol = await getStateCollection();
     const dataCol = await getDataCollection();
 
-    for (const file of files) {
+    for (const station of config.stations) {
       try {
-        await processFile(client, stateCol, dataCol, file);
+        await pollStation(client, stateCol, dataCol, station);
       } catch (err) {
-        logger.error(`Failed processing ${file.name}`, err);
+        logger.error(`Failed polling station "${station.id}"`, err);
       }
     }
   } finally {

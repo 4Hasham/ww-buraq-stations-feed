@@ -57,7 +57,8 @@ async function main() {
     .listen(config.port, () => logger.info(`Health check server listening on port ${config.port}`));
 
   cron.schedule(config.pollCron, runPoll);
-  logger.info(`Scheduled FTP poll with cron "${config.pollCron}" against ${config.ftp.remoteDir}`);
+  const stationList = config.stations.map((s) => `${s.id} (${s.remoteDir})`).join(', ');
+  logger.info(`Scheduled FTP poll with cron "${config.pollCron}" for stations: ${stationList}`);
 
   await runPoll();
 }

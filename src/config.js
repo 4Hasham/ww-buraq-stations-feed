@@ -59,7 +59,10 @@ module.exports = {
   mongo: {
     uri: process.env.MONGODB_URI,
     dbName: process.env.MONGODB_DB_NAME || 'aws',
-    dataCollection: process.env.MONGODB_DATA_COLLECTION || 'aws_station_readings',
+    // Readings are split into one collection per table (e.g. "..._hourly",
+    // "..._decmin") since each table has its own growth rate and retention
+    // needs. See db.js#dataCollectionName.
+    dataCollectionPrefix: process.env.MONGODB_DATA_COLLECTION_PREFIX || 'aws_station_readings',
     stateCollection: process.env.MONGODB_STATE_COLLECTION || 'aws_ftp_sync_state',
   },
   pollCron: process.env.POLL_CRON || '*/10 * * * *',

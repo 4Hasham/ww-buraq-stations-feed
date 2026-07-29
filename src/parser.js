@@ -82,8 +82,17 @@ function hasToa5Header(firstLine) {
   return parseCsvLine(firstLine)[0] === 'TOA5';
 }
 
+// Campbell Scientific loggers write one file per output table (e.g. "Hourly",
+// "DecMin"), named "<...>_<Table>_<MM>_<YYYY>.dat". Extracting it lets us tag
+// which table a row/state entry came from without needing separate config.
+function extractTableName(fileName) {
+  const match = /_([A-Za-z0-9]+)_\d{2}_\d{4}\.dat$/i.exec(fileName);
+  return match ? match[1] : null;
+}
+
 function parseToa5(content, fileName, stationId) {
   const lines = content.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const table = extractTableName(fileName);
 
   if (lines.length === 0) {
     throw new Error(`${fileName}: file is empty`);
@@ -101,6 +110,7 @@ function parseToa5(content, fileName, stationId) {
 
     return {
       stationId,
+      table,
       envInfo: null,
       fieldNames,
       units: null,
@@ -123,6 +133,7 @@ function parseToa5(content, fileName, stationId) {
 
   return {
     stationId,
+    table,
     envInfo,
     fieldNames,
     units,

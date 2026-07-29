@@ -6,6 +6,7 @@ const config = require('./config');
 const logger = require('./logger');
 const { pollOnce } = require('./poller');
 const { connect, close } = require('./db');
+const { handleRequest } = require('./api');
 
 let isPolling = false;
 
@@ -51,10 +52,9 @@ async function main() {
   // Railway health checks expect the service to bind to $PORT.
   http
     .createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('ok');
+      handleRequest(req, res);
     })
-    .listen(config.port, () => logger.info(`Health check server listening on port ${config.port}`));
+    .listen(config.port, () => logger.info(`HTTP server listening on port ${config.port}`));
 
   cron.schedule(config.pollCron, runPoll);
   const stationList = config.stations.map((s) => `${s.id} (${s.remoteDir})`).join(', ');

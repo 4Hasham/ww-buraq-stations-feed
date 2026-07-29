@@ -13,7 +13,7 @@ function hasChanged(prevState, size, modifiedAt) {
   return false;
 }
 
-async function processFile(client, stateCol, dataCol, station, file) {
+async function processFile(client, stateCol, station, file) {
   const { id: stationId, remoteDir } = station;
   const fileName = file.name;
   const size = file.size;
@@ -31,6 +31,7 @@ async function processFile(client, stateCol, dataCol, station, file) {
 
   const content = await downloadFileContent(client, remoteDir, fileName);
   const parsed = parseToa5(content, fileName, stationId);
+  const dataCol = await getDataCollection(parsed.table);
 
   const ops = parsed.rows
     .filter((row) => row.RECORD !== null && !Number.isNaN(row.RECORD))
@@ -42,6 +43,7 @@ async function processFile(client, stateCol, dataCol, station, file) {
             ...row,
             _sourceFile: fileName,
             _station: stationId,
+            _table: parsed.table,
             _ingestedAt: new Date(),
           },
         },
@@ -63,6 +65,7 @@ async function processFile(client, stateCol, dataCol, station, file) {
     {
       $set: {
         _station: stationId,
+        _table: parsed.table,
         fileName,
         size,
         modifiedAt,
@@ -74,11 +77,11 @@ async function processFile(client, stateCol, dataCol, station, file) {
   );
 
   logger.info(
-    `${stationId}/${fileName}: parsed ${parsed.rows.length} rows -> ${upsertedCount} new, ${modifiedCount} updated in MongoDB`,
+    `${stationId}/${fileName} (table: ${parsed.table}): parsed ${parsed.rows.length} rows -> ${upsertedCount} new, ${modifiedCount} updated in MongoDB`,
   );
 }
 
-async function pollStation(client, stateCol, dataCol, station) {
+async function pollStation(client, stateCol, station) {
   logger.info(`Polling FTP folder "${station.remoteDir}" for station "${station.id}"...`);
 
   const files = await listDatFiles(client, station.remoteDir);
@@ -90,7 +93,7 @@ async function pollStation(client, stateCol, dataCol, station) {
 
   for (const file of files) {
     try {
-      await processFile(client, stateCol, dataCol, station, file);
+      await processFile(client, stateCol, station, file);
     } catch (err) {
       logger.error(`Failed processing ${station.id}/${file.name}`, err);
     }
@@ -101,11 +104,10 @@ async function pollOnce() {
   const client = await createClient();
   try {
     const stateCol = await getStateCollection();
-    const dataCol = await getDataCollection();
 
     for (const station of config.stations) {
       try {
-        await pollStation(client, stateCol, dataCol, station);
+        await pollStation(client, stateCol, station);
       } catch (err) {
         logger.error(`Failed polling station "${station.id}"`, err);
       }

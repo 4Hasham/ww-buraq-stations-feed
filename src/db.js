@@ -15,14 +15,30 @@ async function connect() {
   return db;
 }
 
-async function ensureIndexes(database) {
-  await database
-    .collection(config.mongo.dataCollection)
-    .createIndex({ _station: 1, _sourceFile: 1, RECORD: 1 }, { unique: true, name: 'uniq_station_sourceFile_record' });
+async function createIndexSafely(collection, spec, options) {
+  try {
+    await collection.createIndex(spec, options);
+  } catch (err) {
+    if (err.code === 14031 || err.codeName === 'OutOfDiskSpace') {
+      logger.warn(`Skipped index creation for "${options.name}": MongoDB server is low on disk space.`);
+    } else {
+      throw err;
+    }
+  }
+}
 
-  await database
-    .collection(config.mongo.stateCollection)
-    .createIndex({ _station: 1, fileName: 1 }, { unique: true, name: 'uniq_station_fileName' });
+async function ensureIndexes(database) {
+  await createIndexSafely(
+    database.collection(config.mongo.dataCollection),
+    { _station: 1, _sourceFile: 1, RECORD: 1 },
+    { unique: true, name: 'uniq_station_sourceFile_record' },
+  );
+
+  await createIndexSafely(
+    database.collection(config.mongo.stateCollection),
+    { _station: 1, fileName: 1 },
+    { unique: true, name: 'uniq_station_fileName' },
+  );
 }
 
 async function getDataCollection() {
